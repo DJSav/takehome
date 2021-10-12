@@ -1,7 +1,6 @@
 #TODO: Clean Up Code. Delete duplicate functions
 # - Restructure Code. Move functions into Class structure
-# - Switch Index from dict to list for now
-#       - can abstract Index and make alternate implementations later
+# - can abstract Index and make alternate implementations later
 
 # - Define file constants for things like default index filename (for modifiability)
 
@@ -35,13 +34,14 @@ class FileRecord():
     def __repr__(self):
         return repr((self.fullpath, self.basename, self.size, self.type))
 
-    def generate_info(self):
-        """Update the record with file info"""
-        #TODO: Protect against calling this with invalid path
-        self.basename = os.path.basename(self.fullpath)
-        self.size = os.path.getsize(self.fullpath)
-        self.type = os.path.splitext(self.fullpath)[1]
-        return self.basename, self.size, self.type
+    @classmethod
+    def generate(cls, filepath):
+        """Creates a FileRecord with completed properties from filepath"""
+        record = cls(fullpath=filepath)
+        record.basename = os.path.basename(record.fullpath)
+        record.size = os.path.getsize(record.fullpath)
+        record.type = os.path.splitext(record.fullpath)[1]
+        return record
 
     def matches(self, query) -> bool:
         #TODO figure out where this belongs
@@ -52,7 +52,7 @@ class FileRecord():
         return False
 
 class Index():
-    def __init__(self, table=None, root='.'):
+    def __init__(self, root='.', table=None):
         self.table = table if table is not None else []
         self.root = root
     def __str__(self):
@@ -62,26 +62,20 @@ class Index():
         self.table.append(record)
         return
 
+    @classmethod
+    def generate(cls, path):
+        """Generate an Index for a given directory path"""
+        created_index = cls(root=path)
+        for dirpath, subdirs, filenames in os.walk(path):
+            for file in filenames:
+                filepath = os.path.realpath(os.path.join(dirpath, file))
+                record = FileRecord.generate(filepath)
+                created_index.add(record)
+        return created_index
 
-
-def get_dir_files(top):
-    """Generates absolutized normalized paths of all files in directory tree"""
-    filepaths = []
-    for dirpath, subdirs, filenames in os.walk(top):
-        for file in filenames:
-            filepaths.append(os.path.realpath(os.path.join(dirpath, file)))
-    return filepaths
-
-def get_matches(index: Index, basename, size, type):
-    #Next step: migrate to be a method of Index.
-    #Separate out the comparison logic to FileRecord class. Implement FileRecord.matches(record)
-    match_list = []
-    for record in index.table:
-        if (basename is None) or (basename == record.basename):
-            if (size is None) or (size == record.size):
-                if (type is None) or (type == record.type):
-                    match_list.append(record)
-    return match_list
+    def get_matches(self, basename, size, type):
+        query = FileRecord(None, basename, size, type)
+        return [file for file in self.table if file.matches(query)]
 
 
 @click.group()
@@ -95,11 +89,7 @@ def index():
 def create(dir, out):
     """Generates an index of all files in the directory tree"""
     if dir is None: dir = os.getcwd()
-    file_table = Index()
-    for path in get_dir_files(dir):
-        record = FileRecord(path)
-        record.generate_info()
-        file_table.add(record)
+    file_table = Index.generate(dir)
     pickle.dump(file_table, out)
 
 @index.command()
@@ -111,5 +101,5 @@ def create(dir, out):
 def search(source, name, size, type, out):
     """Returns paths to the files in the directory tree which match all parameters. If no parameters are given, it finds all files. Requires an index file [SOURCE], which defaults to "index.idx"."""
     file_table = pickle.load(source)
-    for record in get_matches(file_table, name, size, type):
+    for record in file_table.get_matches(name, size, type):
         click.echo(record.fullpath, file=out)
