@@ -2,15 +2,18 @@
 # - Restructure Code. Move functions into Class structure
 # - Switch Index from dict to list for now
 #       - can abstract Index and make alternate implementations later
-# - make index human readable (json/csv)
+
 # - Define file constants for things like default index filename (for modifiability)
+
+# Possible Features:
+# - make index human readable (json/csv)
 # - implement reverse index for faster search
+# - support regex expressions
 
 
 import os
 import pickle
 import click
-from os.path import normpath, join, realpath
 
 class FileRecord():
     def __init__(
@@ -30,7 +33,7 @@ class FileRecord():
         return self.__repr__()
 
     def __repr__(self):
-        return str((self.fullpath, self.basename, self.size, self.type))
+        return repr((self.fullpath, self.basename, self.size, self.type))
 
     def generate_info(self):
         """Update the record with file info"""
@@ -40,7 +43,7 @@ class FileRecord():
         self.type = os.path.splitext(self.fullpath)[1]
         return self.basename, self.size, self.type
 
-    def matches(self, query):
+    def matches(self, query) -> bool:
         #TODO figure out where this belongs
         if (query.basename is None) or (query.basename == self.basename):
             if (query.size is None) or (query.size == self.size):
@@ -48,18 +51,16 @@ class FileRecord():
                     return True
         return False
 
-
 class Index():
-    def __init__(self, map=None):
-        self.map = map if map is not None else {}
-
+    def __init__(self, table=None, root='.'):
+        self.table = table if table is not None else []
+        self.root = root
     def __str__(self):
-        return self.map.__str__()
+        return "{" + str(self.root) + ", " + str(self.table) + "}"
 
     def add(self, record: FileRecord) -> None:
-        self.map[record.fullpath] = record
+        self.table.append(record)
         return
-
 
 
 
@@ -68,35 +69,19 @@ def get_dir_files(top):
     filepaths = []
     for dirpath, subdirs, filenames in os.walk(top):
         for file in filenames:
-            filepaths.append(realpath(join(dirpath, file)))
+            filepaths.append(os.path.realpath(os.path.join(dirpath, file)))
     return filepaths
-
-def get_file_info(path):
-    """Returns the basename, size, and type of a file"""
-    basename = os.path.basename(path)
-    size = os.path.getsize(path)
-    type = os.path.splitext(path)[1]
-    return basename, size, type
 
 def get_matches(index: Index, basename, size, type):
     #Next step: migrate to be a method of Index.
     #Separate out the comparison logic to FileRecord class. Implement FileRecord.matches(record)
     match_list = []
-    for record in index.map.values():
+    for record in index.table:
         if (basename is None) or (basename == record.basename):
             if (size is None) or (size == record.size):
                 if (type is None) or (type == record.type):
                     match_list.append(record)
     return match_list
-
-def to_file(index, filename):
-    with open(filename, 'wb') as f:
-        pickle.dump(index, f)
-    return
-
-def from_file(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
 
 
 @click.group()
@@ -126,6 +111,5 @@ def create(dir, out):
 def search(source, name, size, type, out):
     """Returns paths to the files in the directory tree which match all parameters. If no parameters are given, it finds all files. Requires an index file [SOURCE], which defaults to "index.idx"."""
     file_table = pickle.load(source)
-    #click.echo(file_table)
     for record in get_matches(file_table, name, size, type):
         click.echo(record.fullpath, file=out)
