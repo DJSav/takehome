@@ -1,11 +1,3 @@
-#TODO:
-# - can abstract Index and make alternate implementations later
-# Possible Features:
-# - make index human readable (json/csv)
-# - implement reverse index for faster search
-# - support regex expressions
-
-
 import os
 import pickle
 import click
