@@ -1,9 +1,5 @@
-#TODO: Clean Up Code. Delete duplicate functions
-# - Restructure Code. Move functions into Class structure
+#TODO:
 # - can abstract Index and make alternate implementations later
-
-# - Define file constants for things like default index filename (for modifiability)
-
 # Possible Features:
 # - make index human readable (json/csv)
 # - implement reverse index for faster search
@@ -14,7 +10,10 @@ import os
 import pickle
 import click
 
+INDEX_DEFAULT="index.idx"
+
 class FileRecord():
+    """A FileRecord contains the file path and relevant metadata for indexing"""
     def __init__(
     self,
     fullpath=None,
@@ -44,14 +43,18 @@ class FileRecord():
         return record
 
     def matches(self, query) -> bool:
-        #TODO figure out where this belongs
-        if (query.basename is None) or (query.basename == self.basename):
-            if (query.size is None) or (query.size == self.size):
-                if (query.type is None) or (query.type == self.type):
-                    return True
-        return False
+        """FileRecords will match if attributes are equal or None"""
+        if not isinstance(query, FileRecord):
+            return False
+        path_match = (query.fullpath is None) or (self.fullpath is None) or (query.fullpath == self.fullpath)
+        name_match = (query.basename is None) or (self.basename is None) or (query.basename == self.basename)
+        size_match = (query.size is None) or (self.size is None) or (query.size == self.size)
+        type_match = (query.type is None) or (self.type is None) or (query.type == self.type)
+        return path_match and name_match and size_match and type_match
+
 
 class Index():
+    """A searchable index for a directory tree"""
     def __init__(self, root='.', table=None):
         self.table = table if table is not None else []
         self.root = root
@@ -73,10 +76,12 @@ class Index():
                 created_index.add(record)
         return created_index
 
-    def get_matches(self, basename, size, type):
-        query = FileRecord(None, basename, size, type)
+    def get_matches(self, query):
         return [file for file in self.table if file.matches(query)]
 
+
+
+# The command line interface:
 
 @click.group()
 def index():
@@ -85,7 +90,7 @@ def index():
 
 @index.command()
 @click.option('--dir', type=click.Path(), help='The path of the directory to index. Defaults to current directory')
-@click.option('--out', default='index.idx', type=click.File('wb'), help='The file name of the created index. Defaults to index.idx')
+@click.option('--out', default=INDEX_DEFAULT, type=click.File('wb'), help=f'The file name of the created index. Defaults to {INDEX_DEFAULT}')
 def create(dir, out):
     """Generates an index of all files in the directory tree"""
     if dir is None: dir = os.getcwd()
@@ -93,13 +98,14 @@ def create(dir, out):
     pickle.dump(file_table, out)
 
 @index.command()
-@click.argument('source', default='index.idx', type=click.File('rb'), required=False)
+@click.argument('source', default=INDEX_DEFAULT, type=click.File('rb'), required=False)
 @click.option('--name', type=str, help='Finds only files with this name (Example: "file.txt")')
 @click.option('--size', type=int, help='Finds only files with this size (Example: 1532)')
 @click.option('--type', type=str, help='Finds only files with this extension (Example: ".png")')
 @click.option('--out', type=click.File('w'), default='-', help='Writes the output to this file. Defaults to stdout')
 def search(source, name, size, type, out):
-    """Returns paths to the files in the directory tree which match all parameters. If no parameters are given, it finds all files. Requires an index file [SOURCE], which defaults to "index.idx"."""
+    """Returns paths to the files in the directory tree which match all parameters. If no parameters are given, it finds all files. Requires an index file."""
     file_table = pickle.load(source)
-    for record in file_table.get_matches(name, size, type):
+    query = FileRecord(None, name, size, type)
+    for record in file_table.get_matches(query):
         click.echo(record.fullpath, file=out)
